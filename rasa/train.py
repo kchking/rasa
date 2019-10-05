@@ -27,11 +27,8 @@ def train(
     force_training: bool = False,
     fixed_model_name: Optional[Text] = None,
     kwargs: Optional[Dict] = None,
-    loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> Optional[Text]:
-    if loop is None:
-        loop = asyncio.get_event_loop()
-
+    loop = asyncio.get_event_loop()
     return loop.run_until_complete(
         train_async(
             domain=domain,

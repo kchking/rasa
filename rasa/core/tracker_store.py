@@ -4,23 +4,18 @@ import logging
 import os
 import pickle
 import typing
-from datetime import datetime, timezone
 from typing import Iterator, Optional, Text, Iterable, Union, Dict
+
 import itertools
 
 # noinspection PyPep8Naming
 from time import sleep
 
-import boto3
-from boto3.dynamodb.conditions import Key
-
 from rasa.core.actions.action import ACTION_LISTEN_NAME
 from rasa.core.brokers.event_channel import EventChannel
 from rasa.core.domain import Domain
 from rasa.core.trackers import ActionExecuted, DialogueStateTracker, EventVerbosity
-from rasa.core.utils import replace_floats_with_decimals
 from rasa.utils.common import class_from_module_path
-from rasa.utils.endpoints import EndpointConfig
 
 if typing.TYPE_CHECKING:
     from sqlalchemy.engine.url import URL
@@ -31,8 +26,6 @@ logger = logging.getLogger(__name__)
 
 
 class TrackerStore(object):
-    """Class to hold all of the TrackerStore classes"""
-
     def __init__(
         self, domain: Optional[Domain], event_broker: Optional[EventChannel] = None
     ) -> None:
@@ -41,29 +34,20 @@ class TrackerStore(object):
         self.max_event_history = None
 
     @staticmethod
-    def find_tracker_store(
-        domain: Domain,
-        store: Optional[EndpointConfig] = None,
-        event_broker: Optional[EventChannel] = None,
-    ) -> "TrackerStore":
-        """Returns the tracker_store type"""
+    def find_tracker_store(domain, store=None, event_broker=None):
         if store is None or store.type is None:
             tracker_store = InMemoryTrackerStore(domain, event_broker=event_broker)
-        elif store.type.lower() == "redis":
+        elif store.type == "redis":
             tracker_store = RedisTrackerStore(
                 domain=domain, host=store.url, event_broker=event_broker, **store.kwargs
             )
-        elif store.type.lower() == "mongod":
+        elif store.type == "mongod":
             tracker_store = MongoTrackerStore(
                 domain=domain, host=store.url, event_broker=event_broker, **store.kwargs
             )
         elif store.type.lower() == "sql":
             tracker_store = SQLTrackerStore(
                 domain=domain, host=store.url, event_broker=event_broker, **store.kwargs
-            )
-        elif store.type.lower() == "dynamo":
-            tracker_store = DynamoTrackerStore(
-                domain=domain, event_broker=event_broker, **store.kwargs
             )
         else:
             tracker_store = TrackerStore.load_tracker_from_module_string(domain, store)
@@ -72,20 +56,7 @@ class TrackerStore(object):
         return tracker_store
 
     @staticmethod
-    def load_tracker_from_module_string(
-        domain: Domain, store: EndpointConfig
-    ) -> "TrackerStore":
-        """
-        Initializes a custom tracker.
-
-        Args:
-            domain: defines the universe in which the assistant operates
-            store: the specific tracker store
-
-        Returns:
-            custom_tracker: a tracker store from a specified database
-            InMemoryTrackerStore: only used if no other tracker store is configured
-        """
+    def load_tracker_from_module_string(domain, store):
         custom_tracker = None
         try:
             custom_tracker = class_from_module_path(store.type)
@@ -100,28 +71,25 @@ class TrackerStore(object):
         else:
             return InMemoryTrackerStore(domain)
 
-    def get_or_create_tracker(
-        self, sender_id: Text, max_event_history: Optional[int] = None
-    ) -> "DialogueStateTracker":
-        """Returns tracker or creates one if the retrieval returns None"""
+    def get_or_create_tracker(self, sender_id, max_event_history=None):
         tracker = self.retrieve(sender_id)
         self.max_event_history = max_event_history
         if tracker is None:
             tracker = self.create_tracker(sender_id)
         return tracker
 
-    def init_tracker(self, sender_id: Text) -> "DialogueStateTracker":
-        """Returns a Dialogue State Tracker"""
+    def init_tracker(self, sender_id):
         return DialogueStateTracker(
             sender_id,
             self.domain.slots if self.domain else None,
             max_event_history=self.max_event_history,
         )
 
-    def create_tracker(
-        self, sender_id: Text, append_action_listen: bool = True
-    ) -> DialogueStateTracker:
-        """Creates a new tracker for the sender_id. The tracker is initially listening."""
+    def create_tracker(self, sender_id, append_action_listen=True):
+        """Creates a new tracker for the sender_id.
+
+        The tracker is initially listening."""
+
         tracker = self.init_tracker(sender_id)
         if tracker:
             if append_action_listen:
@@ -130,15 +98,12 @@ class TrackerStore(object):
         return tracker
 
     def save(self, tracker):
-        """Save method that will be overriden by specific tracker"""
         raise NotImplementedError()
 
     def retrieve(self, sender_id: Text) -> Optional[DialogueStateTracker]:
-        """Retrieve method that will be overriden by specific tracker"""
         raise NotImplementedError()
 
     def stream_events(self, tracker: DialogueStateTracker) -> None:
-        """Streams events to a message broker"""
         offset = self.number_of_existing_events(tracker.sender_id)
         evts = tracker.events
         for evt in list(itertools.islice(evts, offset, len(evts))):
@@ -152,17 +117,14 @@ class TrackerStore(object):
         return len(old_tracker.events) if old_tracker else 0
 
     def keys(self) -> Iterable[Text]:
-        """Returns the set of values for the tracker store's primary key"""
         raise NotImplementedError()
 
     @staticmethod
     def serialise_tracker(tracker):
-        """Serializes the tracker, returns representation of the tracker"""
         dialogue = tracker.as_dialogue()
         return pickle.dumps(dialogue)
 
     def deserialise_tracker(self, sender_id, _json) -> Optional[DialogueStateTracker]:
-        """Deserializes the tracker and returns it"""
         dialogue = pickle.loads(_json)
         tracker = self.init_tracker(sender_id)
         if tracker:
@@ -173,8 +135,6 @@ class TrackerStore(object):
 
 
 class InMemoryTrackerStore(TrackerStore):
-    """Stores conversation history in memory"""
-
     def __init__(
         self, domain: Domain, event_broker: Optional[EventChannel] = None
     ) -> None:
@@ -182,20 +142,12 @@ class InMemoryTrackerStore(TrackerStore):
         super(InMemoryTrackerStore, self).__init__(domain, event_broker)
 
     def save(self, tracker: DialogueStateTracker) -> None:
-        """Updates and saves the current conversation state"""
         if self.event_broker:
             self.stream_events(tracker)
         serialised = InMemoryTrackerStore.serialise_tracker(tracker)
         self.store[tracker.sender_id] = serialised
 
     def retrieve(self, sender_id: Text) -> Optional[DialogueStateTracker]:
-        """
-        Args:
-            sender_id: the message owner ID
-
-        Returns:
-            DialogueStateTracker
-        """
         if sender_id in self.store:
             logger.debug("Recreating tracker for id '{}'".format(sender_id))
             return self.deserialise_tracker(sender_id, self.store[sender_id])
@@ -204,12 +156,12 @@ class InMemoryTrackerStore(TrackerStore):
             return None
 
     def keys(self) -> Iterable[Text]:
-        """Returns sender_ids of the Tracker Store in memory"""
         return self.store.keys()
 
 
 class RedisTrackerStore(TrackerStore):
-    """Stores conversation history in Redis"""
+    def keys(self) -> Iterable[Text]:
+        return self.red.keys()
 
     def __init__(
         self,
@@ -229,7 +181,6 @@ class RedisTrackerStore(TrackerStore):
         super(RedisTrackerStore, self).__init__(domain, event_broker)
 
     def save(self, tracker, timeout=None):
-        """Saves the current conversation state"""
         if self.event_broker:
             self.stream_events(tracker)
 
@@ -240,118 +191,14 @@ class RedisTrackerStore(TrackerStore):
         self.red.set(tracker.sender_id, serialised_tracker, ex=timeout)
 
     def retrieve(self, sender_id):
-        """
-        Args:
-            sender_id: the message owner ID
-
-        Returns:
-            DialogueStateTracker
-        """
         stored = self.red.get(sender_id)
         if stored is not None:
             return self.deserialise_tracker(sender_id, stored)
         else:
             return None
 
-    def keys(self) -> Iterable[Text]:
-        """Returns keys of the Redis Tracker Store"""
-        return self.red.keys()
-
-
-class DynamoTrackerStore(TrackerStore):
-    """Stores conversation history in DynamoDB"""
-
-    def __init__(
-        self,
-        domain: Domain,
-        table_name: Text = "states",
-        region: Text = "us-east-1",
-        event_broker: Optional[EndpointConfig] = None,
-    ):
-        """
-        Args:
-            domain:
-            table_name: The name of the DynamoDb table, does not need to be present a priori.
-            event_broker:
-        """
-        self.client = boto3.client("dynamodb", region_name=region)
-        self.region = region
-        self.table_name = table_name
-        self.db = self.get_or_create_table(table_name)
-        super().__init__(domain, event_broker)
-
-    def get_or_create_table(
-        self, table_name: Text
-    ) -> "boto3.resources.factory.dynamodb.Table":
-        """Returns table or creates one if the table name is not in the table list"""
-        dynamo = boto3.resource("dynamodb", region_name=self.region)
-        if self.table_name not in self.client.list_tables()["TableNames"]:
-            table = dynamo.create_table(
-                TableName=self.table_name,
-                KeySchema=[
-                    {"AttributeName": "sender_id", "KeyType": "HASH"},
-                    {"AttributeName": "session_date", "KeyType": "RANGE"},
-                ],
-                AttributeDefinitions=[
-                    {"AttributeName": "sender_id", "AttributeType": "S"},
-                    {"AttributeName": "session_date", "AttributeType": "N"},
-                ],
-                ProvisionedThroughput={"ReadCapacityUnits": 5, "WriteCapacityUnits": 5},
-            )
-
-            # Wait until the table exists.
-            table.meta.client.get_waiter("table_exists").wait(TableName=table_name)
-        return dynamo.Table(table_name)
-
-    def save(self, tracker):
-        """Saves the current conversation state"""
-        if self.event_broker:
-            self.stream_events(tracker)
-        self.db.put_item(Item=self.serialise_tracker(tracker))
-
-    def serialise_tracker(self, tracker: "DialogueStateTracker") -> Dict:
-        """Serializes the tracker, returns object with decimal types"""
-        d = tracker.as_dialogue().as_dict()
-        d.update(
-            {
-                "sender_id": tracker.sender_id,
-                "session_date": int(datetime.now(tz=timezone.utc).timestamp()),
-            }
-        )
-        return replace_floats_with_decimals(d)
-
-    def retrieve(self, sender_id: Text) -> Optional[DialogueStateTracker]:
-        """Create a tracker from all previously stored events."""
-
-        # Retrieve dialogues for a sender_id in reverse chronological order based on the session_date sort key
-        dialogues = self.db.query(
-            KeyConditionExpression=Key("sender_id").eq(sender_id),
-            Limit=1,
-            ScanIndexForward=False,
-        )["Items"]
-        if dialogues:
-            return DialogueStateTracker.from_dict(
-                sender_id, dialogues[0].get("events"), self.domain.slots
-            )
-        else:
-            return None
-
-    def keys(self) -> Iterable[Text]:
-        """Returns sender_ids of the DynamoTrackerStore"""
-        return [
-            i["sender_id"]
-            for i in self.db.scan(ProjectionExpression="sender_id")["Items"]
-        ]
-
 
 class MongoTrackerStore(TrackerStore):
-    """
-    Stores conversation history in Mongo
-
-    Property methods:
-        conversations: returns the current conversation
-    """
-
     def __init__(
         self,
         domain,
@@ -383,48 +230,22 @@ class MongoTrackerStore(TrackerStore):
 
     @property
     def conversations(self):
-        """Returns the current conversation"""
         return self.db[self.collection]
 
     def _ensure_indices(self):
-        """Create an index on the sender_id"""
         self.conversations.create_index("sender_id")
 
     def save(self, tracker, timeout=None):
-        """Saves the current conversation state"""
         if self.event_broker:
             self.stream_events(tracker)
 
         state = tracker.current_state(EventVerbosity.ALL)
-
-        ######### customized ################
-        if state['latest_event_time'] is not None:
-            state['latest_event_time'] = datetime.fromtimestamp(state['latest_event_time']).strftime(
-                '%Y-%m-%d %H:%M:%S')
-
-        evts = []
-        for evt in state['events']:
-            try:
-                evt['timestamp'] = datetime.fromtimestamp(evt['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-            except:
-                pass
-            evts.append(evt)
-
-        state['events'] = evts
-        ######### customized ################
 
         self.conversations.update_one(
             {"sender_id": tracker.sender_id}, {"$set": state}, upsert=True
         )
 
     def retrieve(self, sender_id):
-        """
-        Args:
-            sender_id: the message owner ID
-
-        Returns:
-            `DialogueStateTracker`
-        """
         stored = self.conversations.find_one({"sender_id": sender_id})
 
         # look for conversations which have used an `int` sender_id in the past
@@ -454,7 +275,6 @@ class MongoTrackerStore(TrackerStore):
             return None
 
     def keys(self) -> Iterable[Text]:
-        """Returns sender_ids of the Mongo Tracker Store"""
         return [c["sender_id"] for c in self.conversations.find()]
 
 
@@ -466,8 +286,6 @@ class SQLTrackerStore(TrackerStore):
     Base = declarative_base()
 
     class SQLEvent(Base):
-        """Represents an event in the SQL Tracker Store"""
-
         from sqlalchemy import Column, Integer, String, Float, Text
 
         __tablename__ = "events"
@@ -607,7 +425,8 @@ class SQLTrackerStore(TrackerStore):
         )
 
     def _create_database_and_update_engine(self, db: Text, engine_url: "URL"):
-        """Create databse `db` and update engine to reflect the updated `engine_url`."""
+        """Create databse `db` and update engine to reflect the updated
+            `engine_url`."""
 
         from sqlalchemy import create_engine
 
@@ -648,7 +467,6 @@ class SQLTrackerStore(TrackerStore):
             session.close()
 
     def keys(self) -> Iterable[Text]:
-        """Returns sender_ids of the SQLTrackerStore"""
         with self.session_scope() as session:
             sender_ids = session.query(self.SQLEvent.sender_id).distinct().all()
             return [sender_id for (sender_id,) in sender_ids]

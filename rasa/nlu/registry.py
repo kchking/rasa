@@ -146,8 +146,7 @@ def get_component_class(component_name: Text) -> Type["Component"]:
                 return class_from_module_path(component_name)
 
             except AttributeError:
-                # when component_name is a path to a class but the path does not contain
-                # that class
+                # when component_name is a path to a class but the path does not contain that class
                 module_name, _, class_name = component_name.rpartition(".")
                 raise Exception(
                     "Failed to find class '{}' in module '{}'.\n"
@@ -156,23 +155,23 @@ def get_component_class(component_name: Text) -> Type["Component"]:
             except ImportError as e:
                 # when component_name is a path to a class but that path is invalid or
                 # when component_name is a class name and not part of old_style_names
+                # TODO: Raise ModuleNotFoundError when component_name is a path to a class but that path is invalid
+                #       as soon as we no longer support Python 3.5. See PR #4166 for details
 
                 is_path = "." in component_name
 
                 if is_path:
                     module_name, _, _ = component_name.rpartition(".")
                     exception_message = "Failed to find module '{}'. \n{}".format(
-                        module_name, e
+                        module_name, e.msg
                     )
                 else:
-                    exception_message = (
-                        "Cannot find class '{0}' from global namespace. "
-                        "Please check that there is no typo in the class "
-                        "name and that you have imported the class into the global "
-                        "namespace.".format(component_name)
+                    exception_message = "Cannot find class '{0}' from global namespace. Please check that there is no typo in the class "
+                    "name and that you have imported the class into the global namespace.".format(
+                        component_name
                     )
 
-                raise ModuleNotFoundError(exception_message)
+                raise Exception(exception_message)
         else:
             # DEPRECATED ensures compatibility, remove in future versions
             logger.warning(

@@ -1,5 +1,6 @@
 import copy
 import logging
+import tensorflow as tf
 from typing import Any, List, Optional, Text, Dict, Callable
 
 import rasa.utils.common

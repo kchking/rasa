@@ -1,27 +1,20 @@
-import logging
-from typing import Text, List
-
 import pytest
-from _pytest.logging import LogCaptureFixture
-from _pytest.tmpdir import TempdirFactory
-from sanic import Sanic
+import logging
 
+from rasa.core.run import _create_app_without_api
 from rasa import server
 from rasa.core import config
 from rasa.core.agent import Agent, load_agent
-from rasa.core.channels import channel
 from rasa.core.channels.channel import RestInput
-from rasa.core.policies import Policy
+from rasa.core.channels import channel
 from rasa.core.policies.memoization import AugmentedMemoizationPolicy
-from rasa.core.run import _create_app_without_api
 from rasa.model import get_model
 from rasa.train import train_async
-from rasa.utils.common import TempDirectoryPath
 from tests.core.conftest import (
-    DEFAULT_DOMAIN_PATH_WITH_SLOTS,
-    DEFAULT_NLU_DATA,
-    DEFAULT_STACK_CONFIG,
     DEFAULT_STORIES_FILE,
+    DEFAULT_DOMAIN_PATH_WITH_SLOTS,
+    DEFAULT_STACK_CONFIG,
+    DEFAULT_NLU_DATA,
     END_TO_END_STORY_FILE,
     MOODBOT_MODEL_PATH,
 )
@@ -34,7 +27,7 @@ pytest_plugins = ["pytester"]
 
 
 @pytest.fixture(autouse=True)
-def set_log_level_debug(caplog: LogCaptureFixture) -> None:
+def set_log_level_debug(caplog):
     # Set the post-test log level to DEBUG for failing tests.  For all tests
     # (failing and successful), the live log level can be additionally set in
     # `setup.cfg`. It should be set to WARNING.
@@ -42,7 +35,7 @@ def set_log_level_debug(caplog: LogCaptureFixture) -> None:
 
 
 @pytest.fixture
-async def default_agent(tmpdir_factory: TempdirFactory) -> Agent:
+async def default_agent(tmpdir_factory) -> Agent:
     model_path = tmpdir_factory.mktemp("model").strpath
 
     agent = Agent(
@@ -57,7 +50,7 @@ async def default_agent(tmpdir_factory: TempdirFactory) -> Agent:
 
 
 @pytest.fixture(scope="session")
-async def trained_moodbot_path() -> Text:
+async def trained_moodbot_path():
     return await train_async(
         domain="examples/moodbot/domain.yml",
         config="examples/moodbot/config.yml",
@@ -67,77 +60,61 @@ async def trained_moodbot_path() -> Text:
 
 
 @pytest.fixture(scope="session")
-async def unpacked_trained_moodbot_path(
-    trained_moodbot_path: Text
-) -> TempDirectoryPath:
+async def unpacked_trained_moodbot_path(trained_moodbot_path):
     return get_model(trained_moodbot_path)
 
 
 @pytest.fixture
-async def stack_agent(trained_rasa_model: Text) -> Agent:
+async def stack_agent(trained_rasa_model) -> Agent:
     return await load_agent(model_path=trained_rasa_model)
 
 
 @pytest.fixture
-async def core_agent(trained_core_model: Text) -> Agent:
+async def core_agent(trained_core_model) -> Agent:
     return await load_agent(model_path=trained_core_model)
 
 
 @pytest.fixture
-async def nlu_agent(trained_nlu_model: Text) -> Agent:
+async def nlu_agent(trained_nlu_model) -> Agent:
     return await load_agent(model_path=trained_nlu_model)
 
 
 @pytest.fixture(scope="session")
-def default_domain_path() -> Text:
+def default_domain_path():
     return DEFAULT_DOMAIN_PATH_WITH_SLOTS
 
 
 @pytest.fixture(scope="session")
-def default_stories_file() -> Text:
+def default_stories_file():
     return DEFAULT_STORIES_FILE
 
 
 @pytest.fixture(scope="session")
-def default_stack_config() -> Text:
+def default_stack_config():
     return DEFAULT_STACK_CONFIG
 
 
 @pytest.fixture(scope="session")
-def default_nlu_data() -> Text:
+def default_nlu_data():
     return DEFAULT_NLU_DATA
 
 
 @pytest.fixture(scope="session")
-def end_to_end_story_file() -> Text:
+def end_to_end_story_file():
     return END_TO_END_STORY_FILE
 
 
 @pytest.fixture(scope="session")
-def default_config() -> List[Policy]:
+def default_config():
     return config.load(DEFAULT_CONFIG_PATH)
-
-
-@pytest.fixture(scope="session")
-def trained_async(tmpdir_factory):
-    async def _train(*args, output_path=None, **kwargs):
-        if output_path is None:
-            output_path = str(tmpdir_factory.mktemp("models"))
-
-        return await train_async(*args, output_path=output_path, **kwargs)
-
-    return _train
 
 
 @pytest.fixture()
 async def trained_rasa_model(
-    trained_async,
-    default_domain_path: Text,
-    default_config: List[Policy],
-    default_nlu_data: Text,
-    default_stories_file: Text,
-) -> Text:
-    trained_stack_model_path = await trained_async(
+    default_domain_path, default_config, default_nlu_data, default_stories_file
+):
+    clean_folder("models")
+    trained_stack_model_path = await train_async(
         domain="data/test_domains/default.yml",
         config=DEFAULT_STACK_CONFIG,
         training_files=[default_nlu_data, default_stories_file],
@@ -148,13 +125,9 @@ async def trained_rasa_model(
 
 @pytest.fixture()
 async def trained_core_model(
-    trained_async,
-    default_domain_path: Text,
-    default_config: List[Policy],
-    default_nlu_data: Text,
-    default_stories_file: Text,
-) -> Text:
-    trained_core_model_path = await trained_async(
+    default_domain_path, default_config, default_nlu_data, default_stories_file
+):
+    trained_core_model_path = await train_async(
         domain=default_domain_path,
         config=DEFAULT_STACK_CONFIG,
         training_files=[default_stories_file],
@@ -165,13 +138,9 @@ async def trained_core_model(
 
 @pytest.fixture()
 async def trained_nlu_model(
-    trained_async,
-    default_domain_path: Text,
-    default_config: List[Policy],
-    default_nlu_data: Text,
-    default_stories_file: Text,
-) -> Text:
-    trained_nlu_model_path = await trained_async(
+    default_domain_path, default_config, default_nlu_data, default_stories_file
+):
+    trained_nlu_model_path = await train_async(
         domain=default_domain_path,
         config=DEFAULT_STACK_CONFIG,
         training_files=[default_nlu_data],
@@ -181,42 +150,44 @@ async def trained_nlu_model(
 
 
 @pytest.fixture
-async def rasa_server(stack_agent: Agent) -> Sanic:
+async def rasa_server(stack_agent):
     app = server.create_app(agent=stack_agent)
     channel.register([RestInput()], app, "/webhooks/")
     return app
 
 
 @pytest.fixture
-async def rasa_core_server(core_agent: Agent) -> Sanic:
+async def rasa_core_server(core_agent):
     app = server.create_app(agent=core_agent)
     channel.register([RestInput()], app, "/webhooks/")
     return app
 
 
 @pytest.fixture
-async def rasa_nlu_server(nlu_agent: Agent) -> Sanic:
+async def rasa_nlu_server(nlu_agent):
     app = server.create_app(agent=nlu_agent)
     channel.register([RestInput()], app, "/webhooks/")
     return app
 
 
 @pytest.fixture
-async def rasa_server_secured(default_agent: Agent) -> Sanic:
+async def rasa_server_secured(default_agent):
     app = server.create_app(agent=default_agent, auth_token="rasa", jwt_secret="core")
     channel.register([RestInput()], app, "/webhooks/")
     return app
 
 
 @pytest.fixture
-async def rasa_server_without_api() -> Sanic:
+async def rasa_server_without_api():
     app = _create_app_without_api()
     channel.register([RestInput()], app, "/webhooks/")
     return app
 
 
-def get_test_client(server):
-    test_client = server.test_client
-    test_client.port = None
+def clean_folder(folder):
+    import os
 
-    return test_client
+    if os.path.exists(folder):
+        import shutil
+
+        shutil.rmtree(folder)

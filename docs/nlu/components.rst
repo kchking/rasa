@@ -116,15 +116,6 @@ SpacyFeaturizer
 :Requires: :ref:`SpacyNLP`
 :Description:
     Creates feature for intent classification using the spacy featurizer.
-    Optionally adds word vectors for each ``token`` to ``ner_features``, which can be referenced in ``CRFEntityExtractor``
-:Configuration:
-
-    .. code-block:: yaml
-
-        pipeline:
-        - name: "SpacyFeaturizer"
-          # Whether to add word vectors to ``ner_features`` (default: False)
-          ner_feature_vectors: True
 
 NGramFeaturizer
 ~~~~~~~~~~~~~~~
@@ -762,8 +753,7 @@ CRFEntityExtractor
     and the states are entity classes. Features of the words (capitalisation, POS tagging,
     etc.) give probabilities to certain entity classes, as are transitions between
     neighbouring entity tags: the most likely set of tags is then calculated and returned.
-    If POS features are used (pos or pos2), spaCy has to be installed. To use custom features
-    made available by Featurizers, use ``"ner_features"``.
+    If POS features are used (pos or pos2), spaCy has to be installed.
 :Configuration:
    .. code-block:: yaml
 
@@ -777,7 +767,7 @@ CRFEntityExtractor
           # Available features are:
           # ``low``, ``title``, ``suffix5``, ``suffix3``, ``suffix2``,
           # ``suffix1``, ``pos``, ``pos2``, ``prefix5``, ``prefix2``,
-          # ``bias``, ``upper``, ``digit``, ``pattern``, and ``ner_features``
+          # ``bias``, ``upper``, ``digit`` and ``pattern``
           features: [["low", "title"], ["bias", "suffix3"], ["upper", "pos", "pos2"]]
 
           # The flag determines whether to use BILOU tagging or not. BILOU
@@ -857,6 +847,5 @@ DucklingHTTPExtractor
           # if not set the default timezone of Duckling is going to be used
           # needed to calculate dates from relative expressions like "tomorrow"
           timezone: "Europe/Berlin"
-          # Timeout for receiving response from http url of the running duckling server
-          # if not set the default timeout of duckling http url is set to 3 seconds. 
-          timeout : 3
+
+

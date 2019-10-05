@@ -110,9 +110,14 @@ def unpack_model(
     if working_directory is None:
         working_directory = tempfile.mkdtemp()
 
+    tar = tarfile.open(model_file)
+
+    # cast `working_directory` as str for py3.5 compatibility
+    working_directory = str(working_directory)
+
     # All files are in a subdirectory.
-    with tarfile.open(model_file, mode="r:gz") as tar:
-        tar.extractall(working_directory)
+    tar.extractall(working_directory)
+    tar.close()
     logger.debug("Extracted model to '{}'.".format(working_directory))
 
     return TempDirectoryPath(working_directory)

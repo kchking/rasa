@@ -25,7 +25,6 @@ from rasa.utils.endpoints import EndpointConfig
 from sanic import Sanic
 from sanic.testing import SanicTestClient, PORT
 from tests.nlu.utilities import ResponseTest
-from tests.conftest import get_test_client
 
 
 # a couple of event instances that we can use for testing
@@ -50,27 +49,27 @@ test_events = [
 
 @pytest.fixture
 def rasa_app_without_api(rasa_server_without_api: Sanic) -> SanicTestClient:
-    return get_test_client(rasa_server_without_api)
+    return rasa_server_without_api.test_client
 
 
 @pytest.fixture
 def rasa_app(rasa_server: Sanic) -> SanicTestClient:
-    return get_test_client(rasa_server)
+    return rasa_server.test_client
 
 
 @pytest.fixture
 def rasa_app_nlu(rasa_nlu_server: Sanic) -> SanicTestClient:
-    return get_test_client(rasa_nlu_server)
+    return rasa_nlu_server.test_client
 
 
 @pytest.fixture
 def rasa_app_core(rasa_core_server: Sanic) -> SanicTestClient:
-    return get_test_client(rasa_core_server)
+    return rasa_core_server.test_client
 
 
 @pytest.fixture
 def rasa_secured_app(rasa_server_secured: Sanic) -> SanicTestClient:
-    return get_test_client(rasa_server_secured)
+    return rasa_server_secured.test_client
 
 
 def test_root(rasa_app: SanicTestClient):
@@ -80,7 +79,6 @@ def test_root(rasa_app: SanicTestClient):
 
 
 def test_root_without_enable_api(rasa_app_without_api: SanicTestClient):
-
     _, response = rasa_app_without_api.get("/")
     assert response.status == 200
     assert response.text.startswith("Hello from Rasa:")
