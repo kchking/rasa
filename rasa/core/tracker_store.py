@@ -241,6 +241,22 @@ class MongoTrackerStore(TrackerStore):
 
         state = tracker.current_state(EventVerbosity.ALL)
 
+        ######### customized ################
+        if state['latest_event_time'] is not None:
+            state['latest_event_time'] = datetime.fromtimestamp(state['latest_event_time']).strftime(
+                '%Y-%m-%d %H:%M:%S')
+
+        evts = []
+        for evt in state['events']:
+            try:
+                evt['timestamp'] = datetime.fromtimestamp(evt['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                pass
+            evts.append(evt)
+
+        state['events'] = evts
+        ######### customized ################
+
         self.conversations.update_one(
             {"sender_id": tracker.sender_id}, {"$set": state}, upsert=True
         )
