@@ -42,6 +42,8 @@ from rasa.nlu.emulators.no_emulator import NoEmulator
 from rasa.nlu.test import run_evaluation
 from rasa.utils.endpoints import EndpointConfig
 
+import glob
+
 logger = logging.getLogger(__name__)
 
 OUTPUT_CHANNEL_QUERY_KEY = "output_channel"
@@ -363,6 +365,38 @@ def create_app(
     # the number of active training processes
     app.active_training_processes = multiprocessing.Value("I", 0)
 
+    ######## Customized ###############
+    app.max_training_processes = 100
+    app.projects_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'projects')
+    if not os.path.exists(app.projects_dir):
+        os.mkdir(app.projects_dir)
+
+    projects = {
+        "max_training_processes": 100,
+        "current_training_processes": app.active_training_processes.value,
+        "available_projects": {}
+    }
+
+    for project_name in glob.glob(app.projects_dir + '/*/'):
+        project = {
+            "status": "ready",
+            "error_message": None,
+            "current_training_processes": 0,
+            "available_models": [],
+            "loaded_models": []
+        }
+
+        project_dir = os.path.join(app.projects_dir, project_name)
+        available_models = [os.path.basename(model) for model in glob.glob(project_dir + '/models/*')]
+        project["available_models"] = available_models
+
+        projects["available_projects"][os.path.basename(project_name[:-1])] = project
+
+    app.status = projects
+    app.emulator = 'please emulator dev in rasa server.py create_app'
+    app.remote_storage = 'please remote_storage dev in rasa server.py create_app'
+    ###################################
+
     @app.exception(ErrorResponse)
     async def handle_error_response(request: Request, exception: ErrorResponse):
         return response.json(exception.error_info, status=exception.status)
@@ -380,6 +414,7 @@ def create_app(
             }
         )
 
+    '''
     @app.get("/status")
     @requires_auth(app, auth_token)
     @ensure_loaded_agent(app)
@@ -393,6 +428,16 @@ def create_app(
                 "num_active_training_jobs": app.active_training_processes.value,
             }
         )
+    '''
+
+    @app.get("/status")
+    @requires_auth(app, auth_token)
+    @ensure_loaded_agent(app)
+    async def status(request: Request):
+        """Respond with the model name and the fingerprint of that model."""
+
+        return response.json(app.status)
+        
 
     @app.get("/conversations/<conversation_id>/tracker")
     @requires_auth(app, auth_token)
